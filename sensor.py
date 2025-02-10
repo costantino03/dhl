@@ -51,8 +51,13 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         if package_id in registrations:
             registrations.remove(package_id)
             await hass.async_add_executor_job(save_json, json_path, registrations)
+            
+            # Remove the entity by entity_id
             entity_id = f"sensor.dhl_{package_id.lower()}"
-            hass.states.async_remove(entity_id)
+            _LOGGER.info("Unregistering package and removing sensor: %s", entity_id)
+            
+            # Using async_remove_entity to remove the sensor
+            await hass.async_add_executor_job(hass.helpers.entity_platform.async_remove_entity, entity_id)
 
     hass.services.async_register(DOMAIN, SERVICE_UNREGISTER, async_service_unregister, schema=SUBSCRIPTION_SCHEMA)
 
