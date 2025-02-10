@@ -4,9 +4,6 @@ dhl_tracking.register:
         package_id:
             description: The ID of the package to track.
             example: "123456789"
-        package_name:
-            description: The optional name of the package.
-            example: "My Cool Package" # Optional field, can be omitted
 
 dhl_tracking.unregister:
     description: Stop tracking a package
