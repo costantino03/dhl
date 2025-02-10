@@ -20,12 +20,16 @@ SERVICE_REGISTER = "register"
 SERVICE_UNREGISTER = "unregister"
 ATTR_API_KEY = "api_key"
 ATTR_PACKAGE_ID = "package_id"
+ATTR_PACKAGE_NAME = "package_name"  # New attribute for optional package name
 ICON = "mdi:package-variant-closed"
 SCAN_INTERVAL = timedelta(minutes=30)
 DHL_API_URL = "https://api-eu.dhl.com/track/shipments?trackingNumber={}"
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({vol.Required(ATTR_API_KEY): cv.string})
-SUBSCRIPTION_SCHEMA = vol.Schema({vol.Required(ATTR_PACKAGE_ID): cv.string})
+SUBSCRIPTION_SCHEMA = vol.Schema({
+    vol.Required(ATTR_PACKAGE_ID): cv.string,
+    vol.Optional(ATTR_PACKAGE_NAME, default=None): cv.string  # Optional package name
+})
 
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up the DHL tracking sensor."""
@@ -36,27 +40,41 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     async def async_service_register(service):
         """Handle package registration."""
         package_id = service.data[ATTR_PACKAGE_ID].upper()
-        if package_id in registrations:
+        package_name = service.data.get(ATTR_PACKAGE_NAME, package_id)  # Use package_id if name is not provided
+
+        # Avoid registering a package that is already tracked
+        if any(reg['id'] == package_id for reg in registrations):
             _LOGGER.warning("Package already tracked: %s", package_id)
             return
-        registrations.append(package_id)
+
+        # Add new package to registrations
+        registrations.append({'id': package_id, 'name': package_name})
         await hass.async_add_executor_job(save_json, json_path, registrations)
-        async_add_entities([DHLSensor(package_id, api_key)], True)
+        async_add_entities([DHLSensor(package_id, package_name, api_key)], True)
 
     hass.services.async_register(DOMAIN, SERVICE_REGISTER, async_service_register, schema=SUBSCRIPTION_SCHEMA)
 
     async def async_service_unregister(service):
         """Handle package unregistration."""
-        package_id = service.data[ATTR_PACKAGE_ID]
-        if package_id in registrations:
-            registrations.remove(package_id)
-            await hass.async_add_executor_job(save_json, json_path, registrations)
-            entity_id = f"sensor.dhl_{package_id.lower()}"
+        package_id = service.data[ATTR_PACKAGE_ID].upper()
+        # Filter out the package that is being untracked
+        registrations = [reg for reg in registrations if reg['id'] != package_id]
+        
+        # Save the updated registration list to the file
+        await hass.async_add_executor_job(save_json, json_path, registrations)
+
+        # Remove the entity related to this package
+        entity_id = f"sensor.dhl_{package_id.lower()}"
+        if hass.states.get(entity_id):
             hass.states.async_remove(entity_id)
+            _LOGGER.info("Package %s has been untracked and sensor removed.", package_id)
+        else:
+            _LOGGER.warning("Sensor for package %s not found or already removed.", package_id)
 
     hass.services.async_register(DOMAIN, SERVICE_UNREGISTER, async_service_unregister, schema=SUBSCRIPTION_SCHEMA)
 
-    sensors = [DHLSensor(package_id, api_key) for package_id in registrations]
+    # Add all existing tracked packages as sensors
+    sensors = [DHLSensor(reg['id'], reg['name'], api_key) for reg in registrations]
     async_add_entities(sensors, True)
 
 def _load_config(filename):
@@ -68,16 +86,17 @@ def _load_config(filename):
 
 class DHLSensor(RestoreEntity):
     """DHL Tracking Sensor."""
-    def __init__(self, package_id, api_key):
+    def __init__(self, package_id, package_name, api_key):
         """Initialize the sensor."""
         self._package_id = package_id
+        self._package_name = package_name or package_id  # Use package_name or package_id if name is not available
         self._api_key = api_key
         self._state = STATE_UNKNOWN
         self._attributes = {}
 
     @property
     def name(self):
-        return f"DHL Package {self._package_id}"
+        return f"DHL Package {self._package_name}"
 
     @property
     def state(self):
