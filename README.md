@@ -13,12 +13,11 @@ And you get your own api key by registering at https://developer.dhl.com/
 
 
 After that you can start to track your packages by calling the service
-`dhl.register`  with a argument looking like
-`{"package_id": "123456789"}` to have home-assistant start tracking
+[example register](example_register.md)
 that package.
 
 And when you loose interest in that package, you just stop tracking it by
-calling `dhl.unregister` with a corresponding argument.
+[example unregister](example_unregister.md)
 
 
 To view all your packages in a nice fashion, I use the auto-entities[1]
@@ -28,7 +27,8 @@ card to view them all as a list in lovelace:
           type: entities
         filter:
           include:
-            - domain: dhl
+            - domain: sensor
+              entity_id: sensor.dhl_*
         type: 'custom:auto-entities'
 ```
 
