@@ -42,11 +42,13 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         package_id = service.data[ATTR_PACKAGE_ID].upper()
         package_name = service.data.get(ATTR_PACKAGE_NAME, package_id)  # Use package_id if name is not provided
 
-        if package_id in registrations:
+        # Avoid registering a package that is already tracked
+        if any(reg['id'] == package_id for reg in registrations):
             _LOGGER.warning("Package already tracked: %s", package_id)
             return
 
-        registrations.append({'id': package_id, 'name': package_name})  # Store both ID and name
+        # Add new package to registrations
+        registrations.append({'id': package_id, 'name': package_name})
         await hass.async_add_executor_job(save_json, json_path, registrations)
         async_add_entities([DHLSensor(package_id, package_name, api_key)], True)
 
@@ -54,16 +56,24 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
 
     async def async_service_unregister(service):
         """Handle package unregistration."""
-        package_id = service.data[ATTR_PACKAGE_ID]
-        if package_id in registrations:
-            registrations = [reg for reg in registrations if reg['id'] != package_id]  # Remove by package ID
-            await hass.async_add_executor_job(save_json, json_path, registrations)
-            entity_id = f"sensor.dhl_{package_id.lower()}"
+        package_id = service.data[ATTR_PACKAGE_ID].upper()
+        # Filter out the package that is being untracked
+        registrations = [reg for reg in registrations if reg['id'] != package_id]
+        
+        # Save the updated registration list to the file
+        await hass.async_add_executor_job(save_json, json_path, registrations)
+
+        # Remove the entity related to this package
+        entity_id = f"sensor.dhl_{package_id.lower()}"
+        if hass.states.get(entity_id):
             hass.states.async_remove(entity_id)
+            _LOGGER.info("Package %s has been untracked and sensor removed.", package_id)
+        else:
+            _LOGGER.warning("Sensor for package %s not found or already removed.", package_id)
 
     hass.services.async_register(DOMAIN, SERVICE_UNREGISTER, async_service_unregister, schema=SUBSCRIPTION_SCHEMA)
 
-    # Update sensors with both ID and name
+    # Add all existing tracked packages as sensors
     sensors = [DHLSensor(reg['id'], reg['name'], api_key) for reg in registrations]
     async_add_entities(sensors, True)
 
