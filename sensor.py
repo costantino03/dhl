@@ -20,12 +20,16 @@ SERVICE_REGISTER = "register"
 SERVICE_UNREGISTER = "unregister"
 ATTR_API_KEY = "api_key"
 ATTR_PACKAGE_ID = "package_id"
+ATTR_PACKAGE_NAME = "package_name"
 ICON = "mdi:package-variant-closed"
 SCAN_INTERVAL = timedelta(minutes=30)
 DHL_API_URL = "https://api-eu.dhl.com/track/shipments?trackingNumber={}"
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({vol.Required(ATTR_API_KEY): cv.string})
-SUBSCRIPTION_SCHEMA = vol.Schema({vol.Required(ATTR_PACKAGE_ID): cv.string})
+SUBSCRIPTION_SCHEMA = vol.Schema({
+    vol.Required(ATTR_PACKAGE_ID): cv.string,
+    vol.Optional(ATTR_PACKAGE_NAME, default=None): cv.string  # Optional package name
+})
 
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up the DHL tracking sensor."""
@@ -36,12 +40,15 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     async def async_service_register(service):
         """Handle package registration."""
         package_id = service.data[ATTR_PACKAGE_ID].upper()
+        package_name = service.data.get(ATTR_PACKAGE_NAME, None)
+        
         if package_id in registrations:
             _LOGGER.warning("Package already tracked: %s", package_id)
             return
+        
         registrations.append(package_id)
         await hass.async_add_executor_job(save_json, json_path, registrations)
-        async_add_entities([DHLSensor(package_id, api_key)], True)
+        async_add_entities([DHLSensor(package_id, api_key, package_name)], True)
 
     hass.services.async_register(DOMAIN, SERVICE_REGISTER, async_service_register, schema=SUBSCRIPTION_SCHEMA)
 
@@ -55,20 +62,17 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
             entity_id = f"sensor.dhl_{package_id.lower()}"
             _LOGGER.info("Unregistering package and removing sensor: %s", entity_id)
             
-            # Manually remove the sensor entity from Home Assistant
+            # Remove from Home Assistant state machine and entity registry
             entity = hass.states.get(entity_id)
             if entity:
                 _LOGGER.info("Removing entity from state machine: %s", entity_id)
-                hass.states.async_remove(entity_id)  # Remove from the state machine
-                # Also, if the sensor is still in the entity registry, it should be removed
-                platform = hass.data.get("sensor", {})
-                if platform:
-                    platform.async_remove_entity(entity_id)  # Remove from the entity registry
+                hass.states.async_remove(entity_id)  # Remove from state machine
+                hass.entities.async_remove(entity_id)  # Remove from the entity registry
 
     hass.services.async_register(DOMAIN, SERVICE_UNREGISTER, async_service_unregister, schema=SUBSCRIPTION_SCHEMA)
 
     # Create and add sensors for all registered packages
-    sensors = [DHLSensor(package_id, api_key) for package_id in registrations]
+    sensors = [DHLSensor(package_id, api_key, None) for package_id in registrations]
     async_add_entities(sensors, True)
 
 def _load_config(filename):
@@ -80,9 +84,10 @@ def _load_config(filename):
 
 class DHLSensor(RestoreEntity):
     """DHL Tracking Sensor."""
-    def __init__(self, package_id, api_key):
+    def __init__(self, package_id, api_key, package_name):
         """Initialize the sensor."""
         self._package_id = package_id
+        self._package_name = package_name
         self._api_key = api_key
         self._state = STATE_UNKNOWN
         self._attributes = {}
@@ -90,6 +95,8 @@ class DHLSensor(RestoreEntity):
 
     @property
     def name(self):
+        if self._package_name:
+            return f"DHL Package {self._package_name} ({self._package_id})"
         return f"DHL Package {self._package_id}"
 
     @property
