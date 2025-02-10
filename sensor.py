@@ -20,12 +20,16 @@ SERVICE_REGISTER = "register"
 SERVICE_UNREGISTER = "unregister"
 ATTR_API_KEY = "api_key"
 ATTR_PACKAGE_ID = "package_id"
+ATTR_PACKAGE_NAME = "package_name"  # New attribute for optional package name
 ICON = "mdi:package-variant-closed"
 SCAN_INTERVAL = timedelta(minutes=30)
 DHL_API_URL = "https://api-eu.dhl.com/track/shipments?trackingNumber={}"
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({vol.Required(ATTR_API_KEY): cv.string})
-SUBSCRIPTION_SCHEMA = vol.Schema({vol.Required(ATTR_PACKAGE_ID): cv.string})
+SUBSCRIPTION_SCHEMA = vol.Schema({
+    vol.Required(ATTR_PACKAGE_ID): cv.string,
+    vol.Optional(ATTR_PACKAGE_NAME, default=None): cv.string  # Optional package name
+})
 
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up the DHL tracking sensor."""
@@ -36,12 +40,15 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     async def async_service_register(service):
         """Handle package registration."""
         package_id = service.data[ATTR_PACKAGE_ID].upper()
+        package_name = service.data.get(ATTR_PACKAGE_NAME, package_id)  # Use package_id if name is not provided
+
         if package_id in registrations:
             _LOGGER.warning("Package already tracked: %s", package_id)
             return
-        registrations.append(package_id)
+
+        registrations.append({'id': package_id, 'name': package_name})  # Store both ID and name
         await hass.async_add_executor_job(save_json, json_path, registrations)
-        async_add_entities([DHLSensor(package_id, api_key)], True)
+        async_add_entities([DHLSensor(package_id, package_name, api_key)], True)
 
     hass.services.async_register(DOMAIN, SERVICE_REGISTER, async_service_register, schema=SUBSCRIPTION_SCHEMA)
 
@@ -49,14 +56,15 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         """Handle package unregistration."""
         package_id = service.data[ATTR_PACKAGE_ID]
         if package_id in registrations:
-            registrations.remove(package_id)
+            registrations = [reg for reg in registrations if reg['id'] != package_id]  # Remove by package ID
             await hass.async_add_executor_job(save_json, json_path, registrations)
             entity_id = f"sensor.dhl_{package_id.lower()}"
             hass.states.async_remove(entity_id)
 
     hass.services.async_register(DOMAIN, SERVICE_UNREGISTER, async_service_unregister, schema=SUBSCRIPTION_SCHEMA)
 
-    sensors = [DHLSensor(package_id, api_key) for package_id in registrations]
+    # Update sensors with both ID and name
+    sensors = [DHLSensor(reg['id'], reg['name'], api_key) for reg in registrations]
     async_add_entities(sensors, True)
 
 def _load_config(filename):
@@ -68,16 +76,17 @@ def _load_config(filename):
 
 class DHLSensor(RestoreEntity):
     """DHL Tracking Sensor."""
-    def __init__(self, package_id, api_key):
+    def __init__(self, package_id, package_name, api_key):
         """Initialize the sensor."""
         self._package_id = package_id
+        self._package_name = package_name or package_id  # Use package_name or package_id if name is not available
         self._api_key = api_key
         self._state = STATE_UNKNOWN
         self._attributes = {}
 
     @property
     def name(self):
-        return f"DHL Package {self._package_id}"
+        return f"DHL Package {self._package_name}"
 
     @property
     def state(self):
