@@ -1,13 +1,13 @@
-dhl_tracking.register:
+register:
     description: Start tracking a package
     fields:
         package_id:
-            description: The ID of the package to track.
+            description: The id of the package to track.
             example: "123456789"
 
-dhl_tracking.unregister:
+unregister:
     description: Stop tracking a package
     fields:
         package_id:
-            description: The ID of the package to stop tracking.
+            description: The id of the package to stop to track.
             example: "123456789"

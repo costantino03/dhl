@@ -1,9 +1,9 @@
 {
   "domain": "dhl",
   "name": "DHL fork by costantino03",
-  "version": "2.0.1",
+  "version": "2.0.0",
   "documentation": "Not yet",
   "requirements": [],
   "dependencies": [],
-  "codeowners": ["costantino03"]
+  "codeowners": ["glance-"]
 }
