@@ -54,7 +54,7 @@ SUBSCRIPTION_SCHEMA = vol.All(
 
 ENTITY_ID_FORMAT = DOMAIN + ".{}"
 
-DHL_API_track_shipments_URL = "https://api-eu.dhl.com/track/shipments?language=en&trackingNumber={}"
+DHL_API_track_shipments_URL = "https://api-eu.dhl.com/track/shipments?trackingNumber={}"
 
 
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
