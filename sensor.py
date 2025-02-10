@@ -1,4 +1,4 @@
-import logging
+import logging 
 import requests
 import voluptuous as vol
 from datetime import timedelta
@@ -52,7 +52,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
             registrations.remove(package_id)
             await hass.async_add_executor_job(save_json, json_path, registrations)
             entity_id = f"sensor.dhl_{package_id.lower()}"
-            hass.states.async_remove(entity_id)
+            await hass.async_add_executor_job(hass.states.remove, entity_id)
 
     hass.services.async_register(DOMAIN, SERVICE_UNREGISTER, async_service_unregister, schema=SUBSCRIPTION_SCHEMA)
 
