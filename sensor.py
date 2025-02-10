@@ -54,8 +54,16 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
             # Build the entity_id and remove it using the entity platform
             entity_id = f"sensor.dhl_{package_id.lower()}"
             _LOGGER.info("Unregistering package and removing sensor: %s", entity_id)
-            # Proper entity removal using platform entity removal
-            await hass.helpers.entity_platform.async_remove_entity(entity_id)
+            
+            # Manually remove the sensor entity from Home Assistant
+            entity = hass.states.get(entity_id)
+            if entity:
+                _LOGGER.info("Removing entity from state machine: %s", entity_id)
+                hass.states.async_remove(entity_id)  # Remove from the state machine
+                # Also, if the sensor is still in the entity registry, it should be removed
+                platform = hass.data.get("sensor", {})
+                if platform:
+                    platform.async_remove_entity(entity_id)  # Remove from the entity registry
 
     hass.services.async_register(DOMAIN, SERVICE_UNREGISTER, async_service_unregister, schema=SUBSCRIPTION_SCHEMA)
 
