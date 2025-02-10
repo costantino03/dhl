@@ -36,11 +36,9 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     async def async_service_register(service):
         """Handle package registration."""
         package_id = service.data[ATTR_PACKAGE_ID].upper()
-        
         if package_id in registrations:
             _LOGGER.warning("Package already tracked: %s", package_id)
             return
-        
         registrations.append(package_id)
         await hass.async_add_executor_job(save_json, json_path, registrations)
         async_add_entities([DHLSensor(package_id, api_key)], True)
@@ -53,20 +51,11 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         if package_id in registrations:
             registrations.remove(package_id)
             await hass.async_add_executor_job(save_json, json_path, registrations)
-            # Build the entity_id and remove it using the entity platform
             entity_id = f"sensor.dhl_{package_id.lower()}"
-            _LOGGER.info("Unregistering package and removing sensor: %s", entity_id)
-            
-            # Remove from Home Assistant state machine and entity registry
-            entity = hass.states.get(entity_id)
-            if entity:
-                _LOGGER.info("Removing entity from state machine: %s", entity_id)
-                hass.states.async_remove(entity_id)  # Remove from state machine
-                hass.entities.async_remove(entity_id)  # Remove from the entity registry
+            hass.states.async_remove(entity_id)
 
     hass.services.async_register(DOMAIN, SERVICE_UNREGISTER, async_service_unregister, schema=SUBSCRIPTION_SCHEMA)
 
-    # Create and add sensors for all registered packages
     sensors = [DHLSensor(package_id, api_key) for package_id in registrations]
     async_add_entities(sensors, True)
 
@@ -85,7 +74,6 @@ class DHLSensor(RestoreEntity):
         self._api_key = api_key
         self._state = STATE_UNKNOWN
         self._attributes = {}
-        self._entity_id = f"sensor.dhl_{package_id.lower()}"  # Explicitly define entity ID
 
     @property
     def name(self):
@@ -102,10 +90,6 @@ class DHLSensor(RestoreEntity):
     @property
     def icon(self):
         return ICON
-
-    @property
-    def entity_id(self):
-        return self._entity_id  # Use the defined entity_id
 
     def update(self):
         """Update sensor state."""
