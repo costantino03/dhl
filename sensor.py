@@ -51,11 +51,14 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         if package_id in registrations:
             registrations.remove(package_id)
             await hass.async_add_executor_job(save_json, json_path, registrations)
+            # Match the sensor entity ID and remove it
             entity_id = f"sensor.dhl_{package_id.lower()}"
+            _LOGGER.info("Unregistering package and removing sensor: %s", entity_id)
             hass.states.async_remove(entity_id)
 
     hass.services.async_register(DOMAIN, SERVICE_UNREGISTER, async_service_unregister, schema=SUBSCRIPTION_SCHEMA)
 
+    # Create and add sensors for all registered packages
     sensors = [DHLSensor(package_id, api_key) for package_id in registrations]
     async_add_entities(sensors, True)
 
@@ -74,6 +77,7 @@ class DHLSensor(RestoreEntity):
         self._api_key = api_key
         self._state = STATE_UNKNOWN
         self._attributes = {}
+        self._entity_id = f"sensor.dhl_{package_id.lower()}"  # Explicitly define entity ID
 
     @property
     def name(self):
@@ -90,6 +94,10 @@ class DHLSensor(RestoreEntity):
     @property
     def icon(self):
         return ICON
+
+    @property
+    def entity_id(self):
+        return self._entity_id  # Use the defined entity_id
 
     def update(self):
         """Update sensor state."""
